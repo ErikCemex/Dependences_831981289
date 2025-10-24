@@ -7,32 +7,22 @@ import unicodedata
 import zipfile
 from openpyxl.utils.exceptions import InvalidFileException
 import calendar
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+from openpyxl.utils import column_index_from_string
+
+
 
 def UploaderAxaDependents(uploaded_file):
-    dependientes_AXA, base_manual_AXA = None, None  
-    
-    if uploaded_file is not None:
+    dependientes_AXA = None
+    if uploaded_file is not None: 
         try:
-            xls = pd.ExcelFile(uploaded_file, engine="openpyxl")
-
-            # Validamos existencia de hojas
-            if "BASE CENTRAL SSFF" in xls.sheet_names:
-                dependientes_AXA = pd.read_excel(xls, sheet_name="BASE CENTRAL SSFF")
-            else:
-                st.warning("No se encontró la hoja 'BASE CENTRAL SSFF'.")
-
-            if "BASES MANUALES" in xls.sheet_names:
-                base_manual_AXA = pd.read_excel(xls, sheet_name="BASES MANUALES")
-            else:
-                st.warning("No se encontró la hoja 'BASES MANUALES'.")
-
+            dependientes_AXA = pd.read_excel(uploaded_file, engine= 'openpyxl')
+            # dependientes_AXA_manual = pd.read_excel(uploaded_file, sheet_name= 'BASES MANUALES', engine='openpyxl')
         except (zipfile.BadZipFile, InvalidFileException):
             st.error("❌ El archivo no es un Excel válido, por favor sube un archivo tipo .xlsx o .xls.")
-        except Exception as e:
-            st.error(f"❌ Error leyendo AXA: {e}")
-
-    return dependientes_AXA, base_manual_AXA
-        
+            return None
+    return dependientes_AXA
 
 def UploaderHCDependents(uploaded_file):
     month_from_filename = 'Archivo'
@@ -42,7 +32,7 @@ def UploaderHCDependents(uploaded_file):
 
             file_name = uploaded_file.name.upper().strip()
             file_name = file_name.replace(".XLSX", "").replace(".XLS", "")
-            name_parts = file_name.split()
+            name_parts = file_name.split('_')
 
             spanish_to_english = {
                 "ENERO": "January", "FEBRERO": "February", "MARZO": "March",
@@ -86,7 +76,7 @@ def normalize_nombre(nombre):
     nombre = re.sub(r"\s+", " ", nombre).strip()
     return nombre
 
-def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC, base_manual):
+def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC):
     # 1. Limpiar nombres de columnas
     dependientes_AXA.columns = dependientes_AXA.columns.str.strip().str.upper()
     dependientes_HC.columns = dependientes_HC.columns.str.strip().str.upper()
@@ -127,6 +117,11 @@ def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC, base_man
                         "CIUDAD_CLI","EMAIL_CLI", "TELEMP1_CLI","ESTUDIANTE","DEP_ECONOMICO","COHABITAEMP",
                         "DIVISION", "DESCRIPCION DIVISION","SUB-DIVISION","DESCRIPCION SUBDIV.",
                         "TIPO POLIZA","AREA DE NOMINA","DESCRIPCION AREA NOM."]
+
+    # axa_columns_order = ["NUMERO DE CERTIFICADO","NOMBRE DEL ASEGURADO","APELLIDO PATERNO DEL ASEGURADO","APELLIDO MATERNO DEL ASEGURADO","NOMBRE_COMPLETO"]
+    
+    # hc_columns_order = ["NOEMPLEADO", "NOMBRE","AP_PATERNO", "AP_MATERNO","NOMBRE_COMPLETO"]
+
 
     dependientes_AXA = dependientes_AXA[axa_columns_order]
     dependientes_HC = dependientes_HC[hc_columns_order]
@@ -181,11 +176,55 @@ def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC, base_man
     # 5. Crear archivo Excel en memoria
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        base_manual.to_excel(writer,sheet_name = "Base_Manual", index = False)
+        # base_manual.to_excel(writer,sheet_name = "Base_Manual", index = False)
         dismatch_HC.to_excel(writer, sheet_name="Diferencias_en_HC", index=False)
         dismatch_AXA.to_excel(writer, sheet_name="Diferencias_en_AXA", index=False)
-        # dependientes_AXA.to_excel(writer, sheet_name="Base_Original_AXA", index=False)
-        # dependientes_HC.to_excel(writer, sheet_name="Base_Original_HC", index=False)
+        dependientes_AXA.to_excel(writer, sheet_name="Base_Original_AXA", index=False)
+        dependientes_HC.to_excel(writer, sheet_name="Base_Original_HC", index=False)
     output.seek(0)
+    wb = load_workbook(output)
+    
+    # colores (ya en ARGB)
+    fill_color_dif_hc = PatternFill(start_color="FFFF8000", end_color="FFFF8000", fill_type="solid")  # naranja
+    fill_color_dif_axa = PatternFill(start_color="FF53CC80", end_color="FF53CC80", fill_type="solid")  # verde
 
-    return output
+    columnas_dif_hc_resaltar = ['B', 'J']
+    columnas_dif_axa_resaltar = ['E', 'L']
+
+    # --- Difierencias_en_HC (colores HC) ---
+    ws_hc_dif = wb['Diferencias_en_HC']
+    for col in columnas_dif_hc_resaltar:
+        col_idx = column_index_from_string(col)
+        # min_row=2 para no colorear encabezado; quita o cambia si quieres incluir fila 1
+        for row in ws_hc_dif.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:   # row es una tupla con la(s) celda(s) de esa columna en esa fila
+                cell.fill = fill_color_dif_hc
+
+    # --- Base_Original_AXA (colores AXA) ---
+    ws_AXA_org = wb['Base_Original_AXA']
+    for col in columnas_dif_axa_resaltar:
+        col_idx = column_index_from_string(col)
+        for row in ws_AXA_org.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                cell.fill = fill_color_dif_hc
+
+    # --- Difierencias_en_AXA (colores AXA) ---
+    ws_AXA_dif = wb['Diferencias_en_AXA']
+    for col in columnas_dif_axa_resaltar:
+        col_idx = column_index_from_string(col)
+        for row in ws_AXA_dif.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                cell.fill = fill_color_dif_axa
+
+    # --- Base_Original_HC (colores HC) ---
+    ws_hc_org = wb["Base_Original_HC"]
+    for col in columnas_dif_hc_resaltar:
+        col_idx = column_index_from_string(col)
+        for row in ws_hc_org.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                cell.fill = fill_color_dif_axa
+
+    final_output = BytesIO()
+    wb.save(final_output)
+    final_output.seek(0)
+    return final_output
