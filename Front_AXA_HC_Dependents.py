@@ -16,7 +16,7 @@ with col1:
     Upload_AXA_dependents = st.file_uploader(
         label='Introduce el archivo de los dependientes de AXA en formato excel', 
         key="uploader1")
-    dependientes_AXA, base_manual_axa = UploaderAxaDependents(Upload_AXA_dependents)
+    dependientes_AXA = UploaderAxaDependents(Upload_AXA_dependents)
 
 with col2:
     Upload_HC_dependents = st.file_uploader(
@@ -27,7 +27,7 @@ with col2:
 
 
 if dependientes_AXA is not None and dependientes_HC is not None:
-    output = ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC, base_manual_axa)
+    output = ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC)
     st.write('------------------------------------------------------------------------------------------------------------------------------')
     spacer1, center_col, spacer2 = st.columns([1, 2, 1])
     with center_col:
