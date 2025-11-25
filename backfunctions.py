@@ -109,7 +109,8 @@ def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC):
     # 3. Reordenar columnas
     axa_columns_order = ["NUMERO DE POLIZA","NOMBRE DEL ASEGURADO","APELLIDO PATERNO DEL ASEGURADO","APELLIDO MATERNO DEL ASEGURADO","NOMBRE_COMPLETO", 
                          "EDAD","FECHA DE ALTA","FECHA DE BAJA","PARENTESCO","ESTATUS DEL ASEGURADO",
-                         "NUMERO DEL SUBGRUPO", "NUMERO DE CERTIFICADO","FECHA DE ANTIGUEDAD","FECHA DE NACIMIENTO","SEXO", "ALIAS"]
+                        #  "NUMERO DEL SUBGRUPO", 
+                         "NUMERO DE CERTIFICADO","FECHA DE ANTIGUEDAD","FECHA DE NACIMIENTO","SEXO", "ALIAS"]
 
     hc_columns_order = ["EMPRESA","NOEMPLEADO","IGPAREN","IGSEXO","IGFALT","CALCULA EDAD",
                         "NOMBRE","AP_PATERNO", "AP_MATERNO","NOMBRE_COMPLETO",
@@ -189,7 +190,7 @@ def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC):
     fill_color_dif_axa = PatternFill(start_color="FF53CC80", end_color="FF53CC80", fill_type="solid")  # verde
 
     columnas_dif_hc_resaltar = ['B', 'J']
-    columnas_dif_axa_resaltar = ['E', 'L']
+    columnas_dif_axa_resaltar = ['E', 'K']
 
     # --- Difierencias_en_HC (colores HC) ---
     ws_hc_dif = wb['Diferencias_en_HC']
