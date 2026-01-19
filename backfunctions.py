@@ -1,147 +1,231 @@
-import pandas as pd 
-import numpy as np 
+import streamlit as st
+import pandas as pd
+import numpy as np
+from io import BytesIO
+import re 
 import unicodedata
-import re
-
-# base_axa = input("Escribe el nombre del documento de la base de datos de AXA")
-# base_hc = input("Escribe el nombre del documento de la base de datos de HC")
-
-# dependientes_AXA = pd.read_excel(base_axa + ".xlsx", engine= "openpyxl")
-# dependientes_HC = pd.read_excel(base_hc + ".xlsx", engine= "openpyxl")
-
-dependientes_AXA = pd.read_excel("BASE DE ASEGURADOS ACTIVOS AXA - POLIZAS CENTRAL_Junio.xlsx", engine= "openpyxl")
-dependientes_HC = pd.read_excel("HC DEPENDIENTES JUNIO.xlsx", engine= "openpyxl")
-
-dependientes_AXA.columns = dependientes_AXA.columns.str.strip().str.upper()
-dependientes_HC.columns = dependientes_HC.columns.str.strip().str.upper()
-
-dependientes_AXA_columns_text = ["NOMBRE", "APELLIDO PATERNO", "APELLIDO MATERNO"]
-dependientes_HC_columns_text = ["NOMBRE", "AP_PATERNO", "AP_MATERNO"]
-
-
-for col in dependientes_AXA_columns_text:
-    dependientes_AXA[col] = dependientes_AXA[col].fillna("").astype(str).str.strip().str.upper()
-
-for col in dependientes_HC_columns_text:
-    dependientes_HC[col] = dependientes_HC[col].fillna("").astype(str).str.strip().str.upper()
-
-
-dependientes_AXA["CERTIFICADO"] = dependientes_AXA["CERTIFICADO"].astype(str).str.strip().str.upper()
-dependientes_HC["NOEMPLEADO"] = dependientes_HC["NOEMPLEADO"].astype(str).str.strip().str.upper()
+import zipfile
+from openpyxl.utils.exceptions import InvalidFileException
+import calendar
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
+from openpyxl.utils import column_index_from_string
 
 
 
-dependientes_AXA["NOMBRE_COMPLETO"] = (
-    dependientes_AXA["NOMBRE"].fillna("").str.strip() + " " +
-    dependientes_AXA["APELLIDO PATERNO"].fillna("").str.strip() + " " +
-    dependientes_AXA["APELLIDO MATERNO"].fillna("").str.strip()
-)
+def UploaderAxaDependents(uploaded_file):
+    dependientes_AXA = None
+    if uploaded_file is not None: 
+        try:
+            dependientes_AXA = pd.read_excel(uploaded_file, engine= 'openpyxl')
+            # dependientes_AXA_manual = pd.read_excel(uploaded_file, sheet_name= 'BASES MANUALES', engine='openpyxl')
+        except (zipfile.BadZipFile, InvalidFileException):
+            st.error("❌ El archivo no es un Excel válido, por favor sube un archivo tipo .xlsx o .xls.")
+            return None
+    return dependientes_AXA
 
+def UploaderHCDependents(uploaded_file):
+    month_from_filename = 'Archivo'
+    if uploaded_file is not None:
+        try:
+            dependientes_HC = pd.read_excel(uploaded_file, engine="openpyxl")
 
-dependientes_HC["NOMBRE_COMPLETO"] = (
-    dependientes_HC["NOMBRE"].fillna("").str.strip() + " " +
-    dependientes_HC["AP_PATERNO"].fillna("").str.strip() + " " +
-    dependientes_HC["AP_MATERNO"].fillna("").str.strip()
-)
+            file_name = uploaded_file.name.upper().strip()
+            file_name = file_name.replace(".XLSX", "").replace(".XLS", "")
+            name_parts = file_name.split('_')
 
+            spanish_to_english = {
+                "ENERO": "January", "FEBRERO": "February", "MARZO": "March",
+                "ABRIL": "April", "MAYO": "May", "JUNIO": "June",
+                "JULIO": "July", "AGOSTO": "August", "SEPTIEMBRE": "September",
+                "OCTUBRE": "October", "NOVIEMBRE": "November", "DICIEMBRE": "December"
+            }
+
+            for part in name_parts:
+                if part in spanish_to_english:
+                    month_from_filename = spanish_to_english[part]
+                    break
+                else:
+                    found_month = False
+                    for month in calendar.month_name[1:]:
+                        if month.upper() in part:
+                            month_from_filename = month
+                            found_month = True
+                            break
+                    if found_month:
+                        break
+
+            return dependientes_HC, month_from_filename
+
+        except (zipfile.BadZipFile, InvalidFileException):
+            st.error("❌ El archivo no es un Excel válido, por favor sube un archivo tipo .xlsx o .xls.")
+            return None, month_from_filename
+
+        except Exception as e:
+            st.error(f"❌ Error leyendo HC: {e}")
+            return None, month_from_filename
+
+    return None, month_from_filename
+       
 
 def normalize_nombre(nombre):
-    # Replace Ñ (manually before normalization)
     nombre = nombre.replace("?", "N").replace("Ñ", "N")
-    
-    # Remove accents (e.g., Ü -> U, Á -> A)
     nombre = unicodedata.normalize("NFD", nombre)
     nombre = nombre.encode("ascii", "ignore").decode("utf-8")
-    
-    # Replace . and - with space
     nombre = re.sub(r"[.-]", " ", nombre)
-    
-    # Replace multiple spaces with single space
     nombre = re.sub(r"\s+", " ", nombre).strip()
-    
     return nombre
 
-# Apply to NOMBRE COMPLETO
-dependientes_AXA["NOMBRE_COMPLETO"] = dependientes_AXA["NOMBRE_COMPLETO"].apply(normalize_nombre)
-dependientes_HC["NOMBRE_COMPLETO"]  = dependientes_HC["NOMBRE_COMPLETO"].apply(normalize_nombre)
+def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC):
+    # 1. Limpiar nombres de columnas
+    dependientes_AXA.columns = dependientes_AXA.columns.str.strip().str.upper()
+    dependientes_HC.columns = dependientes_HC.columns.str.strip().str.upper()
 
-axa_columns_order = ["NO.POLIZA","NOMBRE","APELLIDO PATERNO","APELLIDO MATERNO","NOMBRE_COMPLETO", 
-                     "EDAD","FECHA DE ALTA","FECHA DE BAJA","PARENTESCO","ESTATUS",
-                     "SUBGRUPO", "CERTIFICADO","FECHA DE ANTIGÃŒEDAD","FECHA DE NACIMIENTO","SEXO"]
+    dependientes_AXA_columns_text = ["NOMBRE", "APELLIDO PATERNO", "APELLIDO MATERNO"]
+    dependientes_HC_columns_text = ["NOMBRE", "AP_PATERNO", "AP_MATERNO"]
 
-hc_columns_order = ["EMPRESA","NOEMPLEADO","IGPAREN","IGSEXO","IGFALT","CALCULA EDAD",
-                     "NOMBRE","AP_PATERNO", "AP_MATERNO","NOMBRE_COMPLETO",
-                     "RFC_CLI","DIRECCION_CLI", "COLONIA_CLI","CP_CLI","ESTADO_CLI","DELMUN_CLI",
-                     "CIUDAD_CLI","EMAIL_CLI", "TELEMP1_CLI","ESTUDIANTE","DEP_ECONOMICO","COHABITAEMP",
-                     "DIVISION", "DESCRIPCION DIVISION","SUB-DIVISION","DESCRIPCION SUBDIV.",
-                     "TIPO POLIZA","AREA DE NOMINA","DESCRIPCION AREA NOM."]
+    for col in dependientes_AXA_columns_text:
+        dependientes_AXA[col] = dependientes_AXA[col].fillna("").astype(str).str.strip().str.upper()
 
-dependientes_AXA = dependientes_AXA[axa_columns_order]
-dependientes_HC = dependientes_HC[hc_columns_order]
+    for col in dependientes_HC_columns_text:
+        dependientes_HC[col] = dependientes_HC[col].fillna("").astype(str).str.strip().str.upper()
 
+    dependientes_AXA["CERTIFICADO"] = dependientes_AXA["CERTIFICADO"].astype(str).str.strip().str.upper()
+    dependientes_HC["NOEMPLEADO"] = dependientes_HC["NOEMPLEADO"].astype(str).str.strip().str.upper()
 
-HC_ids = set(dependientes_HC["NOEMPLEADO"])
-HC_names = set(dependientes_HC["NOMBRE_COMPLETO"])
-filtro_id_axa = ~dependientes_AXA["CERTIFICADO"].isin(HC_ids)
-filtro_name_axa = ~dependientes_AXA["NOMBRE_COMPLETO"].isin(HC_names)
-candidatos_dismatch_axa = dependientes_AXA[filtro_id_axa | filtro_name_axa].copy()
+    # 2. Crear columna NOMBRE COMPLETO
+    dependientes_AXA["NOMBRE_COMPLETO"] = (
+        dependientes_AXA["NOMBRE"] + " " +
+        dependientes_AXA["APELLIDO PATERNO"] + " " +
+        dependientes_AXA["APELLIDO MATERNO"]
+    ).apply(normalize_nombre)
 
-# 2. Recalcular la condición exacta
-def clasificar_fino_axa_t(row):
-    id_match = row["CERTIFICADO"] in HC_ids
-    name_match = row["NOMBRE_COMPLETO"] in HC_names
-    if not id_match and not name_match:
-        return "Revisar ID y el nombre en el HC"
-    elif not id_match:
-        return "Revisar el ID en el HC"
-    elif not name_match:
-        return "Revisar el nombre en el HC"
-    else:
-        return None
+    dependientes_HC["NOMBRE_COMPLETO"] = (
+        dependientes_HC["NOMBRE"] + " " +
+        dependientes_HC["AP_PATERNO"] + " " +
+        dependientes_HC["AP_MATERNO"]
+    ).apply(normalize_nombre)
 
-candidatos_dismatch_axa["Tipo_Disparidad"] = candidatos_dismatch_axa.apply(clasificar_fino_axa_t, axis=1)
-candidatos_dismatch_axa = candidatos_dismatch_axa[candidatos_dismatch_axa["Tipo_Disparidad"].notna()].copy()
+    # 3. Reordenar columnas
+    axa_columns_order = ["NUMERO DE POLIZA","NOMBRE","APELLIDO PATERNO","APELLIDO MATERNO","NOMBRE_COMPLETO", 
+                         "EDAD","FECHA DE ALTA","FECHA DE BAJA","PARENTESCO","ESTATUS DEL ASEGURADO",
+                        #  "NUMERO DEL SUBGRUPO", 
+                         "CERTIFICADO","FECHA DE ANTIGUEDAD","FECHA DE NACIMIENTO","SEXO", "ALIAS"]
 
+    hc_columns_order = ["EMPRESA","NOEMPLEADO","IGPAREN","IGSEXO","IGFALT","CALCULA EDAD",
+                        "NOMBRE","AP_PATERNO", "AP_MATERNO","NOMBRE_COMPLETO",
+                        "RFC_CLI","DIRECCION_CLI", "COLONIA_CLI","CP_CLI","ESTADO_CLI","DELMUN_CLI",
+                        "CIUDAD_CLI","EMAIL_CLI", "TELEMP1_CLI","ESTUDIANTE","DEP_ECONOMICO","COHABITAEMP",
+                        "DIVISION", "DESCRIPCION DIVISION","SUB-DIVISION","DESCRIPCION SUBDIV.",
+                        "TIPO POLIZA","AREA DE NOMINA","DESCRIPCION AREA NOM."]
 
-dismatch_AXA = candidatos_dismatch_axa.copy()
-
-
-# ===================
-# HC: misma lógica
-# ===================
+    # axa_columns_order = ["CERTIFICADO","NOMBRE","APELLIDO PATERNO","APELLIDO MATERNO","NOMBRE_COMPLETO"]
+    
+    # hc_columns_order = ["NOEMPLEADO", "NOMBRE","AP_PATERNO", "AP_MATERNO","NOMBRE_COMPLETO"]
 
 
-AXA_ids = set(dependientes_AXA["CERTIFICADO"])
-AXA_names = set(dependientes_AXA["NOMBRE_COMPLETO"])
-filtro_id_hc = ~dependientes_HC["NOEMPLEADO"].isin(AXA_ids)
-filtro_name_hc = ~dependientes_HC["NOMBRE_COMPLETO"].isin(AXA_names)
-candidatos_dismatch_hc = dependientes_HC[filtro_id_hc | filtro_name_hc].copy()
-ids_CIGNA = {"1747946", "1748045", "1748045"}
+    dependientes_AXA = dependientes_AXA[axa_columns_order]
+    dependientes_HC = dependientes_HC[hc_columns_order]
 
-def clasificar_fino_hc(row):
-    id_match = row["NOEMPLEADO"] in AXA_ids
-    name_match = row["NOMBRE_COMPLETO"] in AXA_names
-    if row["NOEMPLEADO"] in ids_CIGNA:
-        return "Dados de alta en CIGNA"
-    if not id_match and not name_match:
-        return "Revisar el ID y el nombre en AXA"
-    elif not id_match:
-        return "Revisar el ID en el AXA"
-    elif not name_match:
-        return "Revisar el nombre en AXA"
-    else:
-        return None
+    # 4. Comparaciones y dismatchs
+    HC_ids = set(dependientes_HC["NOEMPLEADO"])
+    HC_names = set(dependientes_HC["NOMBRE_COMPLETO"])
+    filtro_id_axa = ~dependientes_AXA["CERTIFICADO"].isin(HC_ids)
+    filtro_name_axa = ~dependientes_AXA["NOMBRE_COMPLETO"].isin(HC_names)
+    candidatos_dismatch_axa = dependientes_AXA[filtro_id_axa | filtro_name_axa].copy()
 
+    def clasificar_fino_axa_t(row):
+        id_match = row["CERTIFICADO"] in HC_ids
+        name_match = row["NOMBRE_COMPLETO"] in HC_names
+        if not id_match and not name_match:
+            return "Revisar ID y el nombre en el HC"
+        elif not id_match:
+            return "Revisar el ID en el HC"
+        elif not name_match:
+            return "Revisar el nombre en el HC"
+        else:
+            return None
 
-candidatos_dismatch_hc["Tipo_Disparidad"] = candidatos_dismatch_hc.apply(clasificar_fino_hc, axis=1)
-candidatos_dismatch_hc = candidatos_dismatch_hc[candidatos_dismatch_hc["Tipo_Disparidad"].notna()].copy()
+    candidatos_dismatch_axa["Tipo_Disparidad"] = candidatos_dismatch_axa.apply(clasificar_fino_axa_t, axis=1)
+    dismatch_AXA = candidatos_dismatch_axa[candidatos_dismatch_axa["Tipo_Disparidad"].notna()].copy()
 
-dismatch_HC = candidatos_dismatch_hc.copy()
+    AXA_ids = set(dependientes_AXA["CERTIFICADO"])
+    AXA_names = set(dependientes_AXA["NOMBRE_COMPLETO"])
+    filtro_id_hc = ~dependientes_HC["NOEMPLEADO"].isin(AXA_ids)
+    filtro_name_hc = ~dependientes_HC["NOMBRE_COMPLETO"].isin(AXA_names)
+    candidatos_dismatch_hc = dependientes_HC[filtro_id_hc | filtro_name_hc].copy()
 
-# 3. Nos quedamos con los dismatchs reales
+    ids_CIGNA = {"1747946", "1748045", "1748045"}
 
-with pd.ExcelWriter("Dependents_June.xlsx", engine="openpyxl") as writer:
-    dismatch_HC.to_excel(writer, sheet_name="Diferencias_en_HC", index=False) # Employees in HC but not in AXA
-    dismatch_AXA.to_excel(writer, sheet_name="Diferencias_en_AXA", index=False) #Employees in AXA but not in HC
-    dependientes_AXA.to_excel(writer, sheet_name = "Base_Original_AXA", index= False)
-    dependientes_HC.to_excel(writer,sheet_name="Base_Original_HC",index= False)
+    def clasificar_fino_hc(row):
+        id_match = row["NOEMPLEADO"] in AXA_ids
+        name_match = row["NOMBRE_COMPLETO"] in AXA_names
+        if row["NOEMPLEADO"] in ids_CIGNA:
+            return "Dados de alta en CIGNA"
+        if not id_match and not name_match:
+            return "Revisar el ID y el nombre en AXA"
+        elif not id_match:
+            return "Revisar el ID en el AXA"
+        elif not name_match:
+            return "Revisar el nombre en AXA"
+        else:
+            return None
+
+    candidatos_dismatch_hc["Tipo_Disparidad"] = candidatos_dismatch_hc.apply(clasificar_fino_hc, axis=1)
+    dismatch_HC = candidatos_dismatch_hc[candidatos_dismatch_hc["Tipo_Disparidad"].notna()].copy()
+
+    # 5. Crear archivo Excel en memoria
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        # base_manual.to_excel(writer,sheet_name = "Base_Manual", index = False)
+        dismatch_HC.to_excel(writer, sheet_name="Diferencias_en_HC", index=False)
+        dismatch_AXA.to_excel(writer, sheet_name="Diferencias_en_AXA", index=False)
+        dependientes_AXA.to_excel(writer, sheet_name="Base_Original_AXA", index=False)
+        dependientes_HC.to_excel(writer, sheet_name="Base_Original_HC", index=False)
+    output.seek(0)
+    wb = load_workbook(output)
+    
+    # colores (ya en ARGB)
+    fill_color_dif_hc = PatternFill(start_color="FFFF8000", end_color="FFFF8000", fill_type="solid")  # naranja
+    fill_color_dif_axa = PatternFill(start_color="FF53CC80", end_color="FF53CC80", fill_type="solid")  # verde
+
+    columnas_dif_hc_resaltar = ['B', 'J']
+    columnas_dif_axa_resaltar = ['E', 'K']
+
+    # --- Difierencias_en_HC (colores HC) ---
+    ws_hc_dif = wb['Diferencias_en_HC']
+    for col in columnas_dif_hc_resaltar:
+        col_idx = column_index_from_string(col)
+        # min_row=2 para no colorear encabezado; quita o cambia si quieres incluir fila 1
+        for row in ws_hc_dif.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:   # row es una tupla con la(s) celda(s) de esa columna en esa fila
+                cell.fill = fill_color_dif_hc
+
+    # --- Base_Original_AXA (colores AXA) ---
+    ws_AXA_org = wb['Base_Original_AXA']
+    for col in columnas_dif_axa_resaltar:
+        col_idx = column_index_from_string(col)
+        for row in ws_AXA_org.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                cell.fill = fill_color_dif_hc
+
+    # --- Difierencias_en_AXA (colores AXA) ---
+    ws_AXA_dif = wb['Diferencias_en_AXA']
+    for col in columnas_dif_axa_resaltar:
+        col_idx = column_index_from_string(col)
+        for row in ws_AXA_dif.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                cell.fill = fill_color_dif_axa
+
+    # --- Base_Original_HC (colores HC) ---
+    ws_hc_org = wb["Base_Original_HC"]
+    for col in columnas_dif_hc_resaltar:
+        col_idx = column_index_from_string(col)
+        for row in ws_hc_org.iter_rows(min_row=1, min_col=col_idx, max_col=col_idx):
+            for cell in row:
+                cell.fill = fill_color_dif_axa
+
+    final_output = BytesIO()
+    wb.save(final_output)
+    final_output.seek(0)
+    return final_output
