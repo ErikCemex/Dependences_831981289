@@ -108,9 +108,9 @@ def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC):
 
     # 3. Reordenar columnas
     axa_columns_order = ["NUMERO DE POLIZA","NOMBRE","APELLIDO PATERNO","APELLIDO MATERNO","NOMBRE_COMPLETO", 
-                         "EDAD","FECHA DE ALTA","FECHA DE BAJA","PARENTESCO","ESTATUS DEL ASEGURADO",
-                        #  "NUMERO DEL SUBGRUPO", 
-                         "CERTIFICADO","FECHA DE ANTIGUEDAD","FECHA DE NACIMIENTO","SEXO", "ALIAS"]
+                         "EDAD","FECHA DE ALTA","FECHA DE BAJA","PARENTESCO",
+                        #  "NUMERO DEL SUBGRUPO", "ALIAS", "ESTATUS DEL ASEGURADO",
+                         "CERTIFICADO","FECHA DE ANTIGUEDAD","FECHA DE NACIMIENTO","SEXO"]
 
     hc_columns_order = ["EMPRESA","NOEMPLEADO","IGPAREN","IGSEXO","IGFALT","CALCULA EDAD",
                         "NOMBRE","AP_PATERNO", "AP_MATERNO","NOMBRE_COMPLETO",
