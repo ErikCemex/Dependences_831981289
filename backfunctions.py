@@ -81,7 +81,7 @@ def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC):
     dependientes_AXA.columns = dependientes_AXA.columns.str.strip().str.upper()
     dependientes_HC.columns = dependientes_HC.columns.str.strip().str.upper()
 
-    dependientes_AXA_columns_text = ["NOMBRE DEL ASEGURADO", "APELLIDO PATERNO DEL ASEGURADO", "APELLIDO MATERNO DEL ASEGURADO"]
+    dependientes_AXA_columns_text = ["NOMBRE", "APELLIDO PATERNO", "APELLIDO MATERNO"]
     dependientes_HC_columns_text = ["NOMBRE", "AP_PATERNO", "AP_MATERNO"]
 
     for col in dependientes_AXA_columns_text:
@@ -229,3 +229,4 @@ def ProcessDependents_Generate_excel(dependientes_AXA, dependientes_HC):
     wb.save(final_output)
     final_output.seek(0)
     return final_output
+
